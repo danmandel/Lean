@@ -1,6 +1,7 @@
 /*
  * VIBE-FI.COM - Event Sink for External Consumption
  * Emits structured NDJSON events for order lifecycle, fills, holdings, cash, and equity snapshots.
+ * Publishes to Redis pub/sub for real-time streaming with file fallback.
  */
 
 using System;
@@ -12,11 +13,12 @@ using QuantConnect.Configuration;
 using QuantConnect.Logging;
 using QuantConnect.Orders;
 using QuantConnect.Securities;
+using StackExchange.Redis;
 
 namespace QuantConnect.Lean.Engine.Results
 {
     /// <summary>
-    /// Static event sink that writes NDJSON events to a file for external consumption.
+    /// Static event sink that writes NDJSON events to a file and publishes to Redis for external consumption.
     /// Thread-safe via locking around all file operations.
     /// </summary>
     public static class VibeEventSink
@@ -24,6 +26,9 @@ namespace QuantConnect.Lean.Engine.Results
         private static readonly object _lock = new object();
         private static StreamWriter _writer;
         private static string _filePath;
+        private static ConnectionMultiplexer _redis;
+        private static ISubscriber _publisher;
+        private static string _strategyInstanceId;
         private static readonly JsonSerializerSettings _serializerSettings = new JsonSerializerSettings
         {
             ContractResolver = new CamelCasePropertyNamesContractResolver(),
@@ -43,6 +48,10 @@ namespace QuantConnect.Lean.Engine.Results
                     return; // Already initialized
                 }
 
+                // Get strategy instance ID from config (used as Redis channel suffix)
+                _strategyInstanceId = Config.Get("job-project-id", "");
+
+                // Initialize file writer (fallback)
                 try
                 {
                     _filePath = Path.Combine(resultsDestinationFolder, "vibe-events.ndjson");
@@ -59,13 +68,39 @@ namespace QuantConnect.Lean.Engine.Results
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"VibeEventSink.Initialize(): Failed to initialize event sink: {ex.Message}");
+                    Log.Error($"VibeEventSink.Initialize(): Failed to initialize file sink: {ex.Message}");
+                }
+
+                // Initialize Redis publisher
+                var redisUrl = Config.Get("vibe-redis-url", "");
+                if (!string.IsNullOrEmpty(redisUrl))
+                {
+                    try
+                    {
+                        var options = ConfigurationOptions.Parse(redisUrl);
+                        options.AbortOnConnectFail = false;
+                        options.ConnectTimeout = 5000;
+                        options.SyncTimeout = 1000;
+                        
+                        _redis = ConnectionMultiplexer.Connect(options);
+                        _publisher = _redis.GetSubscriber();
+                        Log.Trace($"VibeEventSink.Initialize(): Connected to Redis at {redisUrl}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Error($"VibeEventSink.Initialize(): Failed to connect to Redis: {ex.Message}");
+                        // Continue without Redis - file fallback will still work
+                    }
+                }
+                else
+                {
+                    Log.Trace("VibeEventSink.Initialize(): No Redis URL configured, using file-only mode");
                 }
             }
         }
 
         /// <summary>
-        /// Emit an event to the NDJSON file.
+        /// Emit an event to both the NDJSON file and Redis pub/sub.
         /// </summary>
         /// <param name="eventType">Type of event (order, fill, holdings, cash, equity)</param>
         /// <param name="payload">The event payload object</param>
@@ -73,26 +108,50 @@ namespace QuantConnect.Lean.Engine.Results
         {
             lock (_lock)
             {
-                if (_writer == null)
+                var eventWrapper = new
                 {
-                    return; // Not initialized or failed to initialize
-                }
+                    type = eventType,
+                    timestamp = DateTime.UtcNow,
+                    data = payload
+                };
 
+                string json;
                 try
                 {
-                    var eventWrapper = new
-                    {
-                        type = eventType,
-                        timestamp = DateTime.UtcNow,
-                        data = payload
-                    };
-
-                    var json = JsonConvert.SerializeObject(eventWrapper, Formatting.None, _serializerSettings);
-                    _writer.WriteLine(json);
+                    json = JsonConvert.SerializeObject(eventWrapper, Formatting.None, _serializerSettings);
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"VibeEventSink.Emit(): Failed to write event: {ex.Message}");
+                    Log.Error($"VibeEventSink.Emit(): Failed to serialize event: {ex.Message}");
+                    return;
+                }
+
+                // Write to file (fallback)
+                if (_writer != null)
+                {
+                    try
+                    {
+                        _writer.WriteLine(json);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Error($"VibeEventSink.Emit(): Failed to write event to file: {ex.Message}");
+                    }
+                }
+
+                // Publish to Redis (primary real-time channel)
+                if (_publisher != null && !string.IsNullOrEmpty(_strategyInstanceId))
+                {
+                    try
+                    {
+                        var channel = $"vibe:events:{_strategyInstanceId}";
+                        _publisher.Publish(RedisChannel.Literal(channel), json, CommandFlags.FireAndForget);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Don't block on Redis failures - file fallback is available
+                        Log.Debug($"VibeEventSink.Emit(): Redis publish failed (file fallback active): {ex.Message}");
+                    }
                 }
             }
         }
@@ -244,6 +303,7 @@ namespace QuantConnect.Lean.Engine.Results
         {
             lock (_lock)
             {
+                // Close file writer
                 if (_writer != null)
                 {
                     try
@@ -251,19 +311,38 @@ namespace QuantConnect.Lean.Engine.Results
                         _writer.Flush();
                         _writer.Close();
                         _writer.Dispose();
-                        Log.Trace("VibeEventSink.Close(): Event sink closed");
+                        Log.Trace("VibeEventSink.Close(): File sink closed");
                     }
                     catch (Exception ex)
                     {
-                        Log.Error($"VibeEventSink.Close(): Error closing event sink: {ex.Message}");
+                        Log.Error($"VibeEventSink.Close(): Error closing file sink: {ex.Message}");
                     }
                     finally
                     {
                         _writer = null;
                     }
                 }
+
+                // Close Redis connection
+                if (_redis != null)
+                {
+                    try
+                    {
+                        _redis.Close();
+                        _redis.Dispose();
+                        Log.Trace("VibeEventSink.Close(): Redis connection closed");
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Error($"VibeEventSink.Close(): Error closing Redis connection: {ex.Message}");
+                    }
+                    finally
+                    {
+                        _redis = null;
+                        _publisher = null;
+                    }
+                }
             }
         }
     }
 }
-
