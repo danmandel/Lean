@@ -159,7 +159,7 @@ namespace QuantConnect.Lean.Engine.Results
         /// <summary>
         /// Emit an order event.
         /// </summary>
-        public static void EmitOrderEvent(OrderEvent orderEvent, Order order)
+        public static void EmitOrderEvent(OrderEvent orderEvent, Orders.Order order)
         {
             var payload = new
             {
@@ -194,7 +194,7 @@ namespace QuantConnect.Lean.Engine.Results
         /// <summary>
         /// Emit a fill event for executed trades.
         /// </summary>
-        private static void EmitFill(OrderEvent orderEvent, Order order)
+        private static void EmitFill(OrderEvent orderEvent, Orders.Order order)
         {
             var payload = new
             {
