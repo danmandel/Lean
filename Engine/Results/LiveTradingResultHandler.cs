@@ -109,6 +109,9 @@ namespace QuantConnect.Lean.Engine.Results
 
             _nextPortfolioMarginUpdate = utcNow.RoundDown(_samplePortfolioPeriod).Add(_samplePortfolioPeriod);
             base.Initialize(parameters);
+
+            // Initialize Vibe event sink for external consumption
+            VibeEventSink.Initialize(ResultsDestinationFolder);
         }
 
         /// <summary>
@@ -223,6 +226,16 @@ namespace QuantConnect.Lean.Engine.Results
                     var runtimeStatistics = GetAlgorithmRuntimeStatistics(summary);
                     Log.Debug("LiveTradingResultHandler.Update(): End build run time stats");
 
+                    // Emit Vibe events for external consumption
+                    VibeEventSink.EmitHoldings(holdings, utcNow);
+                    VibeEventSink.EmitCash(Algorithm.Portfolio.CashBook, utcNow);
+                    VibeEventSink.EmitEquity(
+                        Algorithm.Portfolio.TotalPortfolioValue,
+                        Algorithm.Portfolio.TotalHoldingsValue,
+                        Algorithm.Portfolio.TotalUnrealizedProfit,
+                        Algorithm.Portfolio.TotalFees,
+                        Algorithm.Portfolio.TotalNetProfit,
+                        utcNow);
 
                     // since we're sending multiple packets, let's do it async and forget about it
                     // chart data can get big so let's break them up into groups
@@ -935,6 +948,9 @@ namespace QuantConnect.Lean.Engine.Results
             Log.Trace("LiveTradingResultHandler.OrderEvent(): " + newEvent + " BrokerId: " + brokerIds, true);
             Messages.Enqueue(new OrderEventPacket(AlgorithmId, newEvent));
 
+            // Emit to Vibe event sink for external consumption
+            VibeEventSink.EmitOrderEvent(newEvent, order);
+
             var message = "New Order Event: " + newEvent;
             DebugMessage(message);
         }
@@ -967,6 +983,9 @@ namespace QuantConnect.Lean.Engine.Results
                 StopUpdateRunner();
 
                 SendFinalResult();
+
+                // Close the Vibe event sink
+                VibeEventSink.Close();
 
                 base.Exit();
 
