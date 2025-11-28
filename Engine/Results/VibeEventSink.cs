@@ -12,6 +12,7 @@ using Newtonsoft.Json.Serialization;
 using QuantConnect.Configuration;
 using QuantConnect.Logging;
 using QuantConnect.Orders;
+using QCOrder = QuantConnect.Orders.Order;
 using QuantConnect.Securities;
 using StackExchange.Redis;
 
@@ -159,7 +160,7 @@ namespace QuantConnect.Lean.Engine.Results
         /// <summary>
         /// Emit an order event.
         /// </summary>
-        public static void EmitOrderEvent(OrderEvent orderEvent, Orders.Order order)
+        public static void EmitOrderEvent(OrderEvent orderEvent, QCOrder order)
         {
             var payload = new
             {
@@ -171,8 +172,8 @@ namespace QuantConnect.Lean.Engine.Results
                 quantity = orderEvent.Quantity,
                 fillPrice = orderEvent.FillPrice,
                 fillQuantity = orderEvent.FillQuantity,
-                orderFee = orderEvent.OrderFee?.Value?.Amount ?? 0m,
-                orderFeeCurrency = orderEvent.OrderFee?.Value?.Currency ?? "USD",
+                orderFee = orderEvent.OrderFee?.Value.Amount ?? 0m,
+                orderFeeCurrency = orderEvent.OrderFee?.Value.Currency ?? "USD",
                 message = orderEvent.Message,
                 utcTime = orderEvent.UtcTime,
                 // Include order details if available
@@ -194,7 +195,7 @@ namespace QuantConnect.Lean.Engine.Results
         /// <summary>
         /// Emit a fill event for executed trades.
         /// </summary>
-        private static void EmitFill(OrderEvent orderEvent, Orders.Order order)
+        private static void EmitFill(OrderEvent orderEvent, QCOrder order)
         {
             var payload = new
             {
@@ -204,8 +205,8 @@ namespace QuantConnect.Lean.Engine.Results
                 direction = orderEvent.Direction.ToString(),
                 fillPrice = orderEvent.FillPrice,
                 fillQuantity = orderEvent.FillQuantity,
-                fee = orderEvent.OrderFee?.Value?.Amount ?? 0m,
-                feeCurrency = orderEvent.OrderFee?.Value?.Currency ?? "USD",
+                fee = orderEvent.OrderFee?.Value.Amount ?? 0m,
+                feeCurrency = orderEvent.OrderFee?.Value.Currency ?? "USD",
                 utcTime = orderEvent.UtcTime,
                 brokerIds = order?.BrokerId
             };
