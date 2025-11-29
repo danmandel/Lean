@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.Composition;
 using System.Threading;
 using System.Threading.Tasks;
 using IO.Ably;
@@ -25,6 +26,7 @@ namespace QuantConnect.Lean.Engine.DataFeeds
     /// Data queue handler that receives market data from Ably pub/sub channels.
     /// Used for live trading with centralized market data distribution.
     /// </summary>
+    [Export(typeof(IDataQueueHandler))]
     public class AblyDataQueueHandler : IDataQueueHandler
     {
         private AblyRealtime _ably;
