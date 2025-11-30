@@ -94,6 +94,9 @@ namespace QuantConnect.Lean.Engine.Results
             {
                 State["OptimizationId"] = _job.OptimizationId;
             }
+
+            // Initialize Vibe event sink for external consumption
+            VibeEventSink.Initialize(ResultsDestinationFolder);
         }
 
         /// <summary>
@@ -666,6 +669,9 @@ namespace QuantConnect.Lean.Engine.Results
 
                 SendFinalResult();
 
+                // Close the Vibe event sink
+                VibeEventSink.Close();
+
                 base.Exit();
             }
         }
@@ -702,6 +708,10 @@ namespace QuantConnect.Lean.Engine.Results
         public override void OrderEvent(OrderEvent newEvent)
         {
             _capacityEstimate?.OnOrderEvent(newEvent);
+
+            // Emit to Vibe event sink for external consumption
+            var order = TransactionHandler.GetOrderById(newEvent.OrderId);
+            VibeEventSink.EmitOrderEvent(newEvent, order);
         }
 
         /// <summary>
