@@ -128,7 +128,11 @@ namespace QuantConnect.Lean.Engine.Setup
             Log.Trace($"BrokerageSetupHandler.CreateBrokerage(): creating brokerage '{liveJob.Brokerage}'");
 
             // find the correct brokerage factory based on the specified brokerage in the live job packet
-            _factory = Composer.Instance.Single<IBrokerageFactory>(brokerageFactory => brokerageFactory.BrokerageType.MatchesTypeName(liveJob.Brokerage));
+            _factory = ResolveBrokerageFactory(liveJob.Brokerage);
+            if (_factory == null)
+            {
+                throw new InvalidOperationException($"Unable to resolve brokerage factory for '{liveJob.Brokerage}'");
+            }
             factory = _factory;
 
             PreloadDataQueueHandler(liveJob, uninitializedAlgorithm, factory);
@@ -549,6 +553,34 @@ namespace QuantConnect.Lean.Engine.Setup
                     Log.Trace("BrokerageSetupHandler.Setup(): did not find any data queue handler to dispose");
                 }
             }
+        }
+
+        private static IBrokerageFactory ResolveBrokerageFactory(string brokerageName)
+        {
+            IBrokerageFactory brokerageFactory = null;
+
+            try
+            {
+                brokerageFactory = Composer.Instance.Single<IBrokerageFactory>(
+                    factory => factory.BrokerageType.MatchesTypeName(brokerageName));
+            }
+            catch
+            {
+                // ignore and try fallbacks below
+            }
+
+            if (brokerageFactory == null)
+            {
+                brokerageFactory = Composer.Instance.GetExportedValueByTypeName<IBrokerageFactory>(brokerageName);
+            }
+
+            if (brokerageFactory == null && brokerageName == nameof(Brokerages.VirtualBrokerageDecorator))
+            {
+                brokerageFactory = new Brokerages.VirtualBrokerageFactory();
+                Composer.Instance.AddPart(brokerageFactory);
+            }
+
+            return brokerageFactory;
         }
 
         private void PreloadDataQueueHandler(LiveNodePacket liveJob, IAlgorithm algorithm, IBrokerageFactory factory)

@@ -104,7 +104,10 @@ namespace QuantConnect.Queues
         public static IBrokerageFactory GetFactoryFromDataQueueHandler(string dataQueueHandler)
         {
             IBrokerageFactory brokerageFactory = null;
-            var dataQueueHandlerType = Composer.Instance.GetExportedTypes<IBrokerage>()
+
+            var dataQueueHandlerType = Composer.Instance
+                .GetExportedTypes<IBrokerage>()
+                .Concat(Composer.Instance.GetExportedTypes<IDataQueueHandler>())
                 .FirstOrDefault(x =>
                     x.FullName != null &&
                     x.FullName.EndsWith(dataQueueHandler, StringComparison.InvariantCultureIgnoreCase) &&
@@ -115,6 +118,7 @@ namespace QuantConnect.Queues
                 var attribute = dataQueueHandlerType.GetCustomAttribute<BrokerageFactoryAttribute>();
                 brokerageFactory = (BrokerageFactory)Activator.CreateInstance(attribute.Type);
             }
+
             return brokerageFactory;
         }
 
@@ -182,7 +186,12 @@ namespace QuantConnect.Queues
                 try
                 {
                     // import the brokerage data for the configured brokerage
-                    var brokerageFactory = Composer.Instance.Single<IBrokerageFactory>(factory => factory.BrokerageType.MatchesTypeName(liveJob.Brokerage));
+                    var brokerageFactory = ResolveBrokerageFactory(liveJob.Brokerage);
+                    if (brokerageFactory == null)
+                    {
+                        throw new InvalidOperationException($"Unable to resolve brokerage factory for '{liveJob.Brokerage}'");
+                    }
+
                     brokerageName = brokerageFactory.BrokerageType;
                     liveJob.BrokerageData = brokerageFactory.BrokerageData;
                 }
@@ -280,6 +289,34 @@ namespace QuantConnect.Queues
             }
 
             return AlgorithmLocation;
+        }
+
+        private static IBrokerageFactory ResolveBrokerageFactory(string brokerageName)
+        {
+            IBrokerageFactory brokerageFactory = null;
+
+            try
+            {
+                brokerageFactory = Composer.Instance.Single<IBrokerageFactory>(
+                    factory => factory.BrokerageType.MatchesTypeName(brokerageName));
+            }
+            catch
+            {
+                // ignore and try fallbacks below
+            }
+
+            if (brokerageFactory == null)
+            {
+                brokerageFactory = Composer.Instance.GetExportedValueByTypeName<IBrokerageFactory>(brokerageName);
+            }
+
+            if (brokerageFactory == null && brokerageName == nameof(Brokerages.VirtualBrokerageDecorator))
+            {
+                brokerageFactory = new Brokerages.VirtualBrokerageFactory();
+                Composer.Instance.AddPart(brokerageFactory);
+            }
+
+            return brokerageFactory;
         }
 
         /// <summary>
