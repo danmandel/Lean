@@ -20,6 +20,7 @@ using QuantConnect.Interfaces;
 using QuantConnect.Logging;
 using QuantConnect.Packets;
 using QuantConnect.Util;
+using QuantConnect.Brokerages;
 
 namespace QuantConnect.Lean.Engine.DataFeeds
 {
@@ -28,6 +29,7 @@ namespace QuantConnect.Lean.Engine.DataFeeds
     /// Used for live trading with centralized market data distribution.
     /// </summary>
     [Export(typeof(IDataQueueHandler))]
+    [BrokerageFactory(typeof(AblyDataQueueHandlerFactory))]
     public class AblyDataQueueHandler : IDataQueueHandler
     {
         private AblyRealtime _ably;

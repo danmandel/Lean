@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.Composition;
 using QuantConnect.Configuration;
 using QuantConnect.Interfaces;
 using QuantConnect.Logging;
@@ -18,6 +19,7 @@ namespace QuantConnect.Brokerages
     /// Factory that wraps any brokerage with virtual isolation.
     /// Reads the real brokerage type from config and decorates it with VirtualBrokerageDecorator.
     /// </summary>
+    [Export(typeof(IBrokerageFactory))]
     public class VirtualBrokerageFactory : BrokerageFactory
     {
         private IBrokerageFactory _innerFactory;
@@ -144,4 +146,6 @@ namespace QuantConnect.Brokerages
         }
     }
 }
+
+
 

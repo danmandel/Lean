@@ -21,6 +21,7 @@ namespace QuantConnect.Brokerages
     /// Maintains its own cash and position tracking, independent of the real account.
     /// Orders are still executed on the real brokerage but validated against virtual capital.
     /// </summary>
+    [BrokerageFactory(typeof(VirtualBrokerageFactory))]
     public class VirtualBrokerageDecorator : IBrokerage
     {
         private readonly IBrokerage _innerBrokerage;
