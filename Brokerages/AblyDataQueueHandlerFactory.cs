@@ -3,13 +3,13 @@
  * Factory for AblyDataQueueHandler discovery by BrokerageSetupHandler.
  */
 
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using QuantConnect.Configuration;
 using QuantConnect.Interfaces;
 using QuantConnect.Packets;
 using QuantConnect.Securities;
-using QuantConnect.Lean.Engine.DataFeeds;
 
 namespace QuantConnect.Brokerages
 {
@@ -20,6 +20,8 @@ namespace QuantConnect.Brokerages
     [Export(typeof(IBrokerageFactory))]
     public class AblyDataQueueHandlerFactory : BrokerageFactory
     {
+        private const string HandlerTypeName = "QuantConnect.Lean.Engine.DataFeeds.AblyDataQueueHandler, QuantConnect.Lean.Engine";
+
         /// <summary>
         /// Gets the brokerage data required to run the brokerage from configuration.
         /// </summary>
@@ -32,8 +34,22 @@ namespace QuantConnect.Brokerages
         /// <summary>
         /// Initializes a new instance of the AblyDataQueueHandlerFactory class.
         /// </summary>
-        public AblyDataQueueHandlerFactory() : base(typeof(AblyDataQueueHandler))
+        public AblyDataQueueHandlerFactory() : base(GetBrokerageType())
         {
+        }
+
+        private static Type GetBrokerageType()
+        {
+            // Resolve by name to avoid Brokerages project depending on the engine assembly at compile time
+            return Type.GetType(HandlerTypeName, throwOnError: false) ?? typeof(Brokerage);
+        }
+
+        /// <summary>
+        /// Returns the brokerage model to use with this data source.
+        /// </summary>
+        public override IBrokerageModel GetBrokerageModel(IOrderProvider orderProvider)
+        {
+            return new DefaultBrokerageModel();
         }
 
         /// <summary>
@@ -44,8 +60,10 @@ namespace QuantConnect.Brokerages
             // AblyDataQueueHandler is a data queue handler, not a full brokerage.
             // However, we can return an instance if needed, or let Composer handle it via IDataQueueHandler.
             // BrokerageSetupHandler expects an IBrokerage, but AblyDataQueueHandler only implements IDataQueueHandler.
-            // So we return null here, as the main goal of this factory is configuration discovery.
-            return null;
+            // So we throw here, as the main goal of this factory is configuration discovery.
+            throw new NotSupportedException(
+                "AblyDataQueueHandlerFactory is used for configuration discovery only. " +
+                "Configure Ably as a data queue handler via 'data-queue-handler'.");
         }
 
         /// <summary>
@@ -56,4 +74,3 @@ namespace QuantConnect.Brokerages
         }
     }
 }
-
