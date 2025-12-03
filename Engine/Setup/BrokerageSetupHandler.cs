@@ -571,9 +571,17 @@ namespace QuantConnect.Lean.Engine.Setup
 
             if (brokerageFactory == null)
             {
-                brokerageFactory = Composer.Instance.GetExportedValueByTypeName<IBrokerageFactory>(brokerageName);
+                try
+                {
+                    brokerageFactory = Composer.Instance.GetExportedValueByTypeName<IBrokerageFactory>(brokerageName);
+                }
+                catch
+                {
+                    // ignore and try fallbacks below
+                }
             }
 
+            // Fallback: manually create VirtualBrokerageFactory if requested
             if (brokerageFactory == null && brokerageName == nameof(Brokerages.VirtualBrokerageDecorator))
             {
                 brokerageFactory = new Brokerages.VirtualBrokerageFactory();
