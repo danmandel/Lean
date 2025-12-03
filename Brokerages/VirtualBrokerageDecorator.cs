@@ -1,6 +1,6 @@
 /*
  * VIBE-FI.COM - Virtual Brokerage Isolation
- * Wraps any IBrokerage to provide capital isolation per strategy instance.
+ * Wraps any IBrokerage to provide capital isolation per bot.
  */
 
 using System;
@@ -25,7 +25,7 @@ namespace QuantConnect.Brokerages
     public class VirtualBrokerageDecorator : IBrokerage
     {
         private readonly IBrokerage _innerBrokerage;
-        private readonly string _strategyInstanceId;
+        private readonly string _botId;
         private readonly string _accountCurrency;
         private readonly decimal _allocatedCapital;
 
@@ -38,23 +38,23 @@ namespace QuantConnect.Brokerages
         /// Creates a new VirtualBrokerageDecorator wrapping the specified brokerage.
         /// </summary>
         /// <param name="innerBrokerage">The real brokerage to wrap</param>
-        /// <param name="allocatedCapital">The initial capital allocation for this strategy</param>
+        /// <param name="allocatedCapital">The initial capital allocation for this bot</param>
         /// <param name="currentCash">The current cash (may differ from allocated if restored)</param>
-        /// <param name="strategyInstanceId">The strategy instance ID for logging</param>
+        /// <param name="botId">The bot ID for logging and order tracking</param>
         /// <param name="restoredPositions">Optional positions to restore on startup</param>
         /// <param name="accountCurrency">The account currency (default USD)</param>
         public VirtualBrokerageDecorator(
             IBrokerage innerBrokerage,
             decimal allocatedCapital,
             decimal currentCash,
-            string strategyInstanceId,
+            string botId,
             List<Holding> restoredPositions = null,
             string accountCurrency = Currencies.USD)
         {
             _innerBrokerage = innerBrokerage ?? throw new ArgumentNullException(nameof(innerBrokerage));
             _allocatedCapital = allocatedCapital;
             _virtualCash = currentCash;
-            _strategyInstanceId = strategyInstanceId;
+            _botId = botId;
             _accountCurrency = accountCurrency;
 
             // Restore positions if provided
@@ -81,7 +81,7 @@ namespace QuantConnect.Brokerages
             _innerBrokerage.AccountChanged += (s, e) => AccountChanged?.Invoke(this, e);
             _innerBrokerage.Message += (s, e) => Message?.Invoke(this, e);
 
-            Log.Trace($"VirtualBrokerageDecorator: Initialized for strategy {strategyInstanceId} " +
+            Log.Trace($"VirtualBrokerageDecorator: Initialized for bot {botId} " +
                       $"with allocated=${allocatedCapital}, cash=${currentCash}");
         }
 
@@ -92,7 +92,7 @@ namespace QuantConnect.Brokerages
         {
             var allocatedCapital = Config.GetValue("virtual-allocated-capital", 100000m);
             var currentCash = Config.GetValue("virtual-current-cash", allocatedCapital);
-            var strategyInstanceId = Config.Get("virtual-strategy-instance-id", "unknown");
+            var botId = Config.Get("virtual-bot-id", "unknown");
             var positionsJson = Config.Get("virtual-positions-json", "");
 
             List<Holding> restoredPositions = null;
@@ -113,7 +113,7 @@ namespace QuantConnect.Brokerages
                 innerBrokerage,
                 allocatedCapital,
                 currentCash,
-                strategyInstanceId,
+                botId,
                 restoredPositions,
                 accountCurrency);
         }
@@ -130,7 +130,7 @@ namespace QuantConnect.Brokerages
         }
 
         /// <summary>
-        /// Returns ONLY positions created by this strategy instance
+        /// Returns ONLY positions created by this bot
         /// </summary>
         public List<Holding> GetAccountHoldings()
         {
@@ -140,7 +140,7 @@ namespace QuantConnect.Brokerages
         }
 
         /// <summary>
-        /// Returns ONLY orders placed by this strategy instance
+        /// Returns ONLY orders placed by this bot
         /// </summary>
         public List<Order> GetOpenOrders()
         {
@@ -182,7 +182,7 @@ namespace QuantConnect.Brokerages
 
             // Track this order
             _trackedOrderIds.Add(order.Id);
-            Log.Trace($"VirtualBrokerageDecorator.PlaceOrder: Tracking order {order.Id} for strategy {_strategyInstanceId}");
+            Log.Trace($"VirtualBrokerageDecorator.PlaceOrder: Tracking order {order.Id} for bot {_botId}");
 
             return _innerBrokerage.PlaceOrder(order);
         }
@@ -407,7 +407,7 @@ namespace QuantConnect.Brokerages
         {
             _innerBrokerage.OrdersStatusChanged -= OnInnerOrdersStatusChanged;
             _innerBrokerage.Dispose();
-            Log.Trace($"VirtualBrokerageDecorator: Disposed for strategy {_strategyInstanceId}");
+            Log.Trace($"VirtualBrokerageDecorator: Disposed for bot {_botId}");
         }
 
         #endregion // Delegated Properties & Methods

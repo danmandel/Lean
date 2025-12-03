@@ -38,7 +38,7 @@ namespace QuantConnect.Brokerages
                 // Add virtual brokerage config
                 data["virtual-allocated-capital"] = Config.Get("virtual-allocated-capital", "100000");
                 data["virtual-current-cash"] = Config.Get("virtual-current-cash", "");
-                data["virtual-strategy-instance-id"] = Config.Get("virtual-strategy-instance-id", "");
+                data["virtual-bot-id"] = Config.Get("virtual-bot-id", "");
                 data["virtual-positions-json"] = Config.Get("virtual-positions-json", "");
                 data["virtual-inner-brokerage"] = Config.Get("virtual-inner-brokerage", "AlpacaBrokerage");
 
